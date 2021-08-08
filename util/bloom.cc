@@ -83,10 +83,25 @@ class BloomFilterPolicy : public FilterPolicy {
   size_t bits_per_key_;
   size_t k_;
 };
+
+class VectorBloomFilterPolicy : public BloomFilterPolicy {
+  public:
+  VectorBloomFilterPolicy(int bits_per_key): BloomFilterPolicy(bits_per_key) {
+  }
+
+  void CreateFilter(const Slice* keys, int n, std::string* dst) const override {
+    std::fprintf(stdout, "VectorBloomFilterPolicy::CreateFilter()\n");
+    BloomFilterPolicy::CreateFilter(keys, n, dst);
+  }
+};
+
 }  // namespace
 
 const FilterPolicy* NewBloomFilterPolicy(int bits_per_key) {
   return new BloomFilterPolicy(bits_per_key);
 }
 
+const FilterPolicy* NewVectorBloomFilterPolicy(int bits_per_key) {
+  return new VectorBloomFilterPolicy(bits_per_key);
+}
 }  // namespace leveldb
