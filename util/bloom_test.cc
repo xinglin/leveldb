@@ -7,6 +7,7 @@
 #include "util/coding.h"
 #include "util/logging.h"
 #include "util/testutil.h"
+#include <time.h>
 
 namespace leveldb {
 
@@ -32,12 +33,18 @@ class BloomTest : public testing::Test {
 
   void Build() {
     std::vector<Slice> key_slices;
+    clock_t start, end;
     for (size_t i = 0; i < keys_.size(); i++) {
       key_slices.push_back(Slice(keys_[i]));
     }
+
     filter_.clear();
+    start = clock();
     policy_->CreateFilter(&key_slices[0], static_cast<int>(key_slices.size()),
                           &filter_);
+    end = clock();
+
+    std::fprintf(stdout, "CreateFilter used: %lu ticks\n", (end-start));
     keys_.clear();
     if (kVerbose >= 2) DumpFilter();
   }
@@ -65,12 +72,12 @@ class BloomTest : public testing::Test {
   double FalsePositiveRate() {
     char buffer[sizeof(int)];
     int result = 0;
-    for (int i = 0; i < 10000; i++) {
+    for (int i = 0; i < 100000000; i++) {
       if (Matches(Key(i + 1000000000, buffer))) {
         result++;
       }
     }
-    return result / 10000.0;
+    return result / 100000000.0;
   }
 
  private:
@@ -149,11 +156,39 @@ TEST_F(BloomTest, VaryingLengths) {
   ASSERT_LE(mediocre_filters, good_filters / 5);
 }
 
+TEST_F(BloomTest, CreateFilterPerformance) {
+  char buffer[sizeof(int)];
+  int length = 100000000;
+  clock_t start, end;
+  for (int i = 0; i < length; i++) {
+    Add(Key(i, buffer));
+  }
+
+  Build();
+
+  ASSERT_LE(FilterSize(), static_cast<size_t>((length * 10 / 8) + 40))
+        << length;
+
+  // All added keys must match
+  start = clock();
+  for (int i = 0; i < length; i++) {
+      ASSERT_TRUE(Matches(Key(i, buffer)))
+          << "Length " << length << "; key " << i;
+  }
+  end = clock();
+  std::fprintf(stdout, "Check used %lu ticks, %.2f ticks/check\n",
+        end - start, (double)(end-start)/length);
+  double rate = FalsePositiveRate();
+  ASSERT_LE(rate, 0.02);
+  std::fprintf(stdout, "false positive rate: %.3f\n", rate);
+}
+
 // Different bits-per-byte
 
 }  // namespace leveldb
 
 int main(int argc, char** argv) {
   testing::InitGoogleTest(&argc, argv);
+  ::testing::GTEST_FLAG(filter) = "*Performance";
   return RUN_ALL_TESTS();
 }
