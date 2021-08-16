@@ -9,6 +9,7 @@
 #include "util/testutil.h"
 #include "util/cycle.h"
 #include <time.h>
+#include <locale.h>
 
 static	inline uint64_t
 time_nsec(void)
@@ -174,12 +175,13 @@ TEST_F(BloomTest, VaryingLengths) {
 }
 
 TEST_F(BloomTest, Performance) {
+  setlocale(LC_NUMERIC, "en_US.utf-8");
   char buffer[sizeof(int)];
   std::vector<int> lengths {100, 10000, 1000000, 10000000, 100000000};
   for(int length: lengths) {
     Reset();
 
-    std::fprintf(stdout, "length = %d\n", length);
+    std::fprintf(stdout, "==== length: %'d ====\n", length);
     uint64_t start_ticks, end_ticks;
     uint64_t start_ns, end_ns;
     for (int i = 0; i < length; i++) {
