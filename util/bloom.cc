@@ -6,6 +6,7 @@
 
 #include "leveldb/slice.h"
 #include "util/hash.h"
+#include <immintrin.h>
 
 namespace leveldb {
 
@@ -79,7 +80,7 @@ class BloomFilterPolicy : public FilterPolicy {
     return true;
   }
 
- private:
+ protected:
   size_t bits_per_key_;
   size_t k_;
 };
@@ -91,7 +92,39 @@ class VectorBloomFilterPolicy : public BloomFilterPolicy {
 
   void CreateFilter(const Slice* keys, int n, std::string* dst) const override {
     std::fprintf(stdout, "VectorBloomFilterPolicy::CreateFilter()\n");
-    BloomFilterPolicy::CreateFilter(keys, n, dst);
+    // Compute bloom filter size (in both bits and bytes)
+    size_t bits = n * bits_per_key_;
+
+    // For small n, we can see a very high false positive rate.  Fix it
+    // by enforcing a minimum bloom filter length.
+    if (bits < 64) bits = 64;
+
+    size_t bytes = (bits + 7) / 8;
+    bits = bytes * 8;
+
+    const size_t init_size = dst->size();
+    dst->resize(init_size + bytes, 0);
+    dst->push_back(static_cast<char>(k_));  // Remember # of probes in filter
+    char* array = &(*dst)[init_size];
+    for (int i = 0; i < n; i++) {
+      // Use double-hashing to generate a sequence of hash values.
+      // See analysis in [Kirsch,Mitzenmacher 2006].
+      uint32_t h = BloomHash(keys[i]);
+      const uint32_t delta = (h >> 17) | (h << 15);  // Rotate right 17 bits
+
+      setKey(array, h, delta, bits);
+      for (size_t j = 0; j < k_; j++) {
+        const uint32_t bitpos = h % bits;
+        array[bitpos / 8] |= (1 << (bitpos % 8));
+        h += delta;
+      }
+    }
+  }
+
+  private:
+  // assume k = 8 for simplicity.
+  void setKey(char* array, uint32_t h, uint32_t delta, uint32_t bits) const {
+    __m512i vindex = _mm512_setr_epi32(0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15);
   }
 };
 
