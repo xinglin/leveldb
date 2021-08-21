@@ -9,7 +9,10 @@
 #include "util/testutil.h"
 #include "util/cycle.h"
 #include <time.h>
-#include <locale.h>
+#include <unordered_map>
+#include <string>
+
+using namespace std;
 
 static	inline uint64_t
 time_nsec(void)
@@ -23,6 +26,14 @@ namespace leveldb {
 
 static const int kVerbose = 1;
 static const int BITS_PER_KEY = 12;
+
+static unordered_map<int, string> HUMAN_LENGTHS = {
+  {1000,      "      1,000"},
+  {10000,     "     10,000"},
+  {1000000,   "  1,000,000"},
+  {10000000,  " 10,000,000"},
+  {100000000, "100,000,000"}
+};
 
 static Slice Key(int i, char* buffer) {
   EncodeFixed32(buffer, i);
@@ -176,13 +187,12 @@ TEST_F(BloomTest, VaryingLengths) {
 }
 
 TEST_F(BloomTest, Performance) {
-  setlocale(LC_NUMERIC, "en_US.utf-8");
   char buffer[sizeof(int)];
-  std::vector<int> lengths {100, 10000, 1000000, 10000000, 100000000};
+  std::vector<int> lengths {1000, 10000, 1000000, 10000000, 100000000};
   for(int length: lengths) {
     Reset();
 
-    std::fprintf(stdout, "==== length: %'d ====\n", length);
+    cout << "==== length: " << HUMAN_LENGTHS[length] << " ====" << endl;
     uint64_t start_ticks, end_ticks;
     uint64_t start_ns, end_ns;
     for (int i = 0; i < length; i++) {
