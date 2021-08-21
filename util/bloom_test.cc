@@ -22,6 +22,7 @@ time_nsec(void)
 namespace leveldb {
 
 static const int kVerbose = 1;
+static const int BITS_PER_KEY = 12;
 
 static Slice Key(int i, char* buffer) {
   EncodeFixed32(buffer, i);
@@ -30,7 +31,7 @@ static Slice Key(int i, char* buffer) {
 
 class BloomTest : public testing::Test {
  public:
-  BloomTest() : policy_(NewVectorBloomFilterPolicy(10)) {}
+  BloomTest() : policy_(NewVectorBloomFilterPolicy(BITS_PER_KEY)) {}
 
   ~BloomTest() { delete policy_; }
 
@@ -145,7 +146,7 @@ TEST_F(BloomTest, VaryingLengths) {
     }
     Build();
 
-    ASSERT_LE(FilterSize(), static_cast<size_t>((length * 10 / 8) + 40))
+    ASSERT_LE(FilterSize(), static_cast<size_t>((length * BITS_PER_KEY / 8) + 40))
         << length;
 
     // All added keys must match
@@ -190,7 +191,7 @@ TEST_F(BloomTest, Performance) {
 
     Build();
 
-    ASSERT_LE(FilterSize(), static_cast<size_t>((length * 10 / 8) + 40))
+    ASSERT_LE(FilterSize(), static_cast<size_t>((length * BITS_PER_KEY / 8) + 40))
           << length;
 
     // All added keys must match
