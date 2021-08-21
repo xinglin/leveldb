@@ -80,6 +80,10 @@ endif(CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
 # https://clang.llvm.org/docs/ThreadSafetyAnalysis.html
 include(CheckCXXCompilerFlag)
 check_cxx_compiler_flag(-Wthread-safety HAVE_CLANG_THREAD_SAFETY)
+check_cxx_compiler_flag("-march=skylake-avx512" COMPILER_SUPPORTS_MARCH_AVX512)
+if(COMPILER_SUPPORTS_MARCH_AVX512)
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -march=skylake-avx512")
+endif()
 
 # Used by googletest.
 check_cxx_compiler_flag(-Wno-missing-field-initializers
