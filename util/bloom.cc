@@ -7,6 +7,10 @@
 #include "leveldb/slice.h"
 #include "util/hash.h"
 #include <immintrin.h>
+#include <stdint.h>
+#include <iostream>
+#include <climits>
+#include <cassert>
 
 namespace leveldb {
 
@@ -98,9 +102,10 @@ class VectorBloomFilterPolicy : public BloomFilterPolicy {
     // For small n, we can see a very high false positive rate.  Fix it
     // by enforcing a minimum bloom filter length.
     if (bits < 64) bits = 64;
-
-    size_t bytes = (bits + 7) / 8;
-    bits = bytes * 8;
+    bits = roundUp(bits);
+    size_t bytes = bits / 8;
+    assert(bits-1 <= INT_MAX);  // ensure mask can be represented by a signed integer.
+    int32_t MASK = bits-1;
 
     const size_t init_size = dst->size();
     dst->resize(init_size + bytes, 0);
@@ -114,8 +119,11 @@ class VectorBloomFilterPolicy : public BloomFilterPolicy {
 
       setKey(array, h, delta, bits);
       for (size_t j = 0; j < k_; j++) {
-        const uint32_t bitpos = h % bits;
-        array[bitpos / 8] |= (1 << (bitpos % 8));
+        //const uint32_t bitpos = h % bits;
+        // array[bitpos / 8] |= (1 << (bitpos % 8));
+
+        const uint32_t bitpos = h & MASK;
+        array[bitpos / 8] |= (1 << (bitpos & 7));
         h += delta;
       }
     }
@@ -124,8 +132,23 @@ class VectorBloomFilterPolicy : public BloomFilterPolicy {
   private:
   // assume k = 8 for simplicity.
   void setKey(char* array, uint32_t h, uint32_t delta, uint32_t bits) const {
-    __m512i vindex = _mm512_setr_epi32(0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15);
+    __m512i mm_times = _mm512_setr_epi32(0,1,2,3,4,5,6,7,0,1,2,3,4,5,6,7);
+    __m512i mm_DELTA = _mm512_set1_epi32(delta);
+    __m512i mm_BITS = _mm512_set1_epi32(bits);
+    __m512i mm_h = _mm512_set1_epi32(h);
+
+    // _mm512_mul_ps() accepts two __m512 and returns a __m512.
+    // needs to cast between __m512 and __m512i.
+    __m512 mm_delta_s = _mm512_mul_ps(
+                  _mm512_castsi512_ps(mm_DELTA),
+                  _mm512_castsi512_ps(mm_times));
+    __m512i mm_delta = _mm512_castps_si512(mm_delta_s);
+
+    __m512i mm_bitops = _mm512_add_epi32(mm_h, mm_delta);
+
+
   }
+
 };
 
 }  // namespace
@@ -137,4 +160,14 @@ const FilterPolicy* NewBloomFilterPolicy(int bits_per_key) {
 const FilterPolicy* NewVectorBloomFilterPolicy(int bits_per_key) {
   return new VectorBloomFilterPolicy(bits_per_key);
 }
+
+size_t roundUp(size_t n) {
+  assert(n < SIZE_MAX/2);
+
+  size_t m = 1;
+  while(m < n)
+    m *= 2;
+  return m;
+}
+
 }  // namespace leveldb

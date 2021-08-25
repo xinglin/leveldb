@@ -200,8 +200,8 @@ TEST_F(BloomTest, Performance) {
     }
 
     Build();
-
-    ASSERT_LE(FilterSize(), static_cast<size_t>((length * BITS_PER_KEY / 8) + 40))
+  
+    ASSERT_LE(FilterSize(), static_cast<size_t>(roundUp(length * BITS_PER_KEY / 8) + 40))
           << length;
 
     // All added keys must match
