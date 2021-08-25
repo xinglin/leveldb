@@ -105,7 +105,7 @@ class VectorBloomFilterPolicy : public BloomFilterPolicy {
     bits = roundUp(bits);
     size_t bytes = bits / 8;
     assert(bits-1 <= INT_MAX);  // ensure mask can be represented by a signed integer.
-    int32_t MASK = bits-1;
+    int32_t mask = bits-1;
 
     const size_t init_size = dst->size();
     dst->resize(init_size + bytes, 0);
@@ -117,36 +117,50 @@ class VectorBloomFilterPolicy : public BloomFilterPolicy {
       uint32_t h = BloomHash(keys[i]);
       const uint32_t delta = (h >> 17) | (h << 15);  // Rotate right 17 bits
 
-      setKey(array, h, delta, bits);
+      //setKey(array, h, delta, mask);
       for (size_t j = 0; j < k_; j++) {
         //const uint32_t bitpos = h % bits;
         // array[bitpos / 8] |= (1 << (bitpos % 8));
 
-        const uint32_t bitpos = h & MASK;
-        array[bitpos / 8] |= (1 << (bitpos & 7));
+        const uint32_t bitpos = h & mask;
+        array[bitpos >> 3] |= (1 << (bitpos & 7));
         h += delta;
       }
     }
   }
 
   private:
+
   // assume k = 8 for simplicity.
-  void setKey(char* array, uint32_t h, uint32_t delta, uint32_t bits) const {
+  void setKey(char* array, uint32_t h, uint32_t delta, uint32_t mask) const {
+    __m512i mm_one = _mm512_set1_epi32(0x1);
+    __m512i mm_three = _mm512_set1_epi32(0x3);
+    __m512i mm_byte_mask = _mm512_set1_epi32(0x7);
     __m512i mm_times = _mm512_setr_epi32(0,1,2,3,4,5,6,7,0,1,2,3,4,5,6,7);
-    __m512i mm_DELTA = _mm512_set1_epi32(delta);
-    __m512i mm_BITS = _mm512_set1_epi32(bits);
+    __m512i mm_delta = _mm512_set1_epi32(delta);
+    __m512i mm_mask = _mm512_set1_epi32(mask);
     __m512i mm_h = _mm512_set1_epi32(h);
 
-    // _mm512_mul_ps() accepts two __m512 and returns a __m512.
+    // _mm512_fmadd_ps() accepts __m512, instead of __m512i.
     // needs to cast between __m512 and __m512i.
-    __m512 mm_delta_s = _mm512_mul_ps(
-                  _mm512_castsi512_ps(mm_DELTA),
-                  _mm512_castsi512_ps(mm_times));
-    __m512i mm_delta = _mm512_castps_si512(mm_delta_s);
+    // bitpos = times * delta + h
+    __m512 mm_new_h_s = _mm512_fmadd_ps(
+                  _mm512_castsi512_ps(mm_times),
+                  _mm512_castsi512_ps(mm_delta),
+                  _mm512_castsi512_ps(mm_h));
+    __m512i mm_bitpos = _mm512_castps_si512(mm_new_h_s);
 
-    __m512i mm_bitops = _mm512_add_epi32(mm_h, mm_delta);
+    //        const uint32_t bitpos = h & mask;
+    //    array[bitpos / 8] |= (1 << (bitpos & 7));
+    mm_bitpos = _mm512_and_epi32(mm_bitpos, mm_mask);
 
+    __m512i mm_byteId = _mm512_srlv_epi32(mm_bitpos, mm_three); // bitpos / 8
 
+    __m512i mm_bit_index = _mm512_and_epi32(mm_bitpos, mm_byte_mask);
+    __m512i mm_bytes = _mm512_sllv_epi32(mm_one, mm_bit_index);
+    __m512i mm_old_value = _mm512_i32gather_epi32(mm_byteId, array, 1);
+    __m512i mm_new_value = _mm512_or_epi32(mm_old_value, mm_bytes);
+    _mm512_i32scatter_epi32(array, mm_byteId, mm_new_value, 1);
   }
 
 };
